@@ -172,8 +172,8 @@ type options struct {
 }
 
 var defaultOptions = options{
-	timeout:          time.Duration(300 * time.Second),
-	contimeout:       time.Duration(900 * time.Second),
+	timeout:          time.Duration(600 * time.Second),
+	contimeout:       time.Duration(600 * time.Second),
 	tlshshaketimeout: time.Duration(150 * time.Second),
 }
 
