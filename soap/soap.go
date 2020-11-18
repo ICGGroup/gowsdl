@@ -305,6 +305,8 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 	startTime := time.Now()
 	requestID := fmt.Sprintf("%s-%d", soapAction, startTime.UnixNano)
 
+	pretty.Println("processing request", requestID)
+
 	if s.headers != nil && len(s.headers) > 0 {
 		envelope.Header = &SOAPHeader{
 			Headers: s.headers,
@@ -441,6 +443,7 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 }
 
 func logFiles(gowsdlDebuggingPath string, requestID string, reqBytes []byte, respBytes []byte) {
+	pretty.Println("logging files")
 
 	err := ioutil.WriteFile(filepath.Join(gowsdlDebuggingPath, fmt.Sprintf("%s.request", requestID)), reqBytes, 0755)
 	if err != nil {
