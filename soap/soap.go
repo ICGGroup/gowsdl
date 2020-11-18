@@ -394,6 +394,8 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 			return err
 		}
 
+		pretty.Println("respBytes", respBytes)
+
 		res.Body = ioutil.NopCloser(bodyCopy)
 
 	}
