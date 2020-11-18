@@ -6,9 +6,16 @@ import (
 	"crypto/tls"
 	"encoding/xml"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
+
+	"github.com/icggroup/logrus"
+	"github.com/kr/pretty"
 )
 
 type SOAPEncoder interface {
@@ -291,6 +298,12 @@ func (s *Client) Call(soapAction string, request, response interface{}) error {
 
 func (s *Client) call(ctx context.Context, soapAction string, request, response interface{}) error {
 	envelope := SOAPEnvelope{}
+	// For debugging
+	reqBytes := []byte{}
+	respBytes := []byte{}
+
+	startTime := time.Now()
+	requestID := fmt.Sprintf("%s-%d", soapAction, startTime.UnixNano)
 
 	if s.headers != nil && len(s.headers) > 0 {
 		envelope.Header = &SOAPHeader{
@@ -314,6 +327,18 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 	if err := encoder.Flush(); err != nil {
 		return err
 	}
+
+	// if GOWSDL_DEBUGGING_PATH is set, go ahead and formulate a filename
+	gowsdlDebuggingPath := os.Getenv("GOWSDL_DEBUGGING_PATH")
+	if gowsdlDebuggingPath != "" {
+		reqBytes = buffer.Bytes()
+	}
+	gowsdlDebuggingLevel := os.Getenv("GOWSDL_DEBUGGING_LEVEL")
+	if gowsdlDebuggingLevel == "" {
+		gowsdlDebuggingLevel = "error"
+	}
+
+	pretty.Println("gowsdlDebugging", gowsdlDebuggingPath, gowsdlDebuggingLevel)
 
 	req, err := http.NewRequest("POST", s.url, buffer)
 	if err != nil {
@@ -358,11 +383,29 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 	}
 	defer res.Body.Close()
 
+	if gowsdlDebuggingPath != "" {
+
+		bodyCopy := bytes.NewBuffer([]byte{})
+
+		r := io.TeeReader(res.Body, bodyCopy)
+
+		respBytes, err = ioutil.ReadAll(r)
+		if err != nil {
+			return err
+		}
+
+		res.Body = ioutil.NopCloser(bodyCopy)
+
+	}
+
 	respEnvelope := new(SOAPEnvelope)
 	respEnvelope.Body = SOAPBody{Content: response}
 
 	mtomBoundary, err := getMtomHeader(res.Header.Get("Content-Type"))
 	if err != nil {
+		if gowsdlDebuggingLevel == "error" {
+			logFiles(gowsdlDebuggingPath, requestID, reqBytes, respBytes)
+		}
 		return err
 	}
 
@@ -374,13 +417,37 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 	}
 
 	if err := dec.Decode(respEnvelope); err != nil {
+		if gowsdlDebuggingLevel == "error" {
+			logFiles(gowsdlDebuggingPath, requestID, reqBytes, respBytes)
+		}
 		return err
 	}
 
 	fault := respEnvelope.Body.Fault
 	if fault != nil {
+		if gowsdlDebuggingLevel == "error" {
+			logFiles(gowsdlDebuggingPath, requestID, reqBytes, respBytes)
+		}
 		return fault
 	}
 
+	if gowsdlDebuggingLevel == "debug" {
+		logFiles(gowsdlDebuggingPath, requestID, reqBytes, respBytes)
+	}
+
 	return nil
+}
+
+func logFiles(gowsdlDebuggingPath string, requestID string, reqBytes []byte, respBytes []byte) {
+
+	err := ioutil.WriteFile(filepath.Join(gowsdlDebuggingPath, fmt.Sprintf("%s.request", requestID)), reqBytes, 0755)
+	if err != nil {
+		logrus.Warnf("unable to write request debugging file: %s", err.Error())
+	}
+
+	err = ioutil.WriteFile(filepath.Join(gowsdlDebuggingPath, fmt.Sprintf("%s.response", requestID)), respBytes, 0755)
+	if err != nil {
+		logrus.Warnf("unable to write response debugging file: %s", err.Error())
+	}
+
 }
