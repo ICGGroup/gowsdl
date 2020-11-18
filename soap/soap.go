@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/icggroup/logrus"
-	"github.com/kr/pretty"
 )
 
 type SOAPEncoder interface {
@@ -305,8 +304,6 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 	startTime := time.Now()
 	requestID := fmt.Sprintf("%s-%d", soapAction, startTime.UnixNano)
 
-	pretty.Println("processing request", requestID)
-
 	if s.headers != nil && len(s.headers) > 0 {
 		envelope.Header = &SOAPHeader{
 			Headers: s.headers,
@@ -339,8 +336,6 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 	if gowsdlDebuggingLevel == "" {
 		gowsdlDebuggingLevel = "error"
 	}
-
-	pretty.Println("gowsdlDebugging", gowsdlDebuggingPath, gowsdlDebuggingLevel)
 
 	req, err := http.NewRequest("POST", s.url, buffer)
 	if err != nil {
@@ -381,6 +376,11 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 
 	res, err := client.Do(req)
 	if err != nil {
+		respBytes = []byte(err.Error())
+		if gowsdlDebuggingLevel == "error" {
+			logFiles(gowsdlDebuggingPath, requestID, reqBytes, respBytes)
+		}
+
 		return err
 	}
 	defer res.Body.Close()
@@ -395,8 +395,6 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 		if err != nil {
 			return err
 		}
-
-		pretty.Println("respBytes", respBytes)
 
 		res.Body = ioutil.NopCloser(bodyCopy)
 
@@ -443,7 +441,9 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 }
 
 func logFiles(gowsdlDebuggingPath string, requestID string, reqBytes []byte, respBytes []byte) {
-	pretty.Println("logging files")
+	if gowsdlDebuggingPath == "" {
+		return
+	}
 
 	err := ioutil.WriteFile(filepath.Join(gowsdlDebuggingPath, fmt.Sprintf("%s.request", requestID)), reqBytes, 0755)
 	if err != nil {
